@@ -10,6 +10,52 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC Specs for the compute I used
+# MAGIC ```json
+# MAGIC {
+# MAGIC     "autoscale": {
+# MAGIC         "min_workers": 2,
+# MAGIC         "max_workers": 8
+# MAGIC     },
+# MAGIC     "cluster_name": "Multi Node MLR",
+# MAGIC     "spark_version": "15.4.x-cpu-ml-scala2.12",
+# MAGIC     "spark_conf": {
+# MAGIC         "spark.databricks.pyspark.dataFrameChunk.enabled": "true"
+# MAGIC     },
+# MAGIC     "aws_attributes": {
+# MAGIC         "first_on_demand": 1,
+# MAGIC         "availability": "SPOT_WITH_FALLBACK",
+# MAGIC         "zone_id": "auto",
+# MAGIC         "spot_bid_price_percent": 100,
+# MAGIC         "ebs_volume_type": "GENERAL_PURPOSE_SSD",
+# MAGIC         "ebs_volume_count": 3,
+# MAGIC         "ebs_volume_size": 100
+# MAGIC     },
+# MAGIC     "node_type_id": "m5d.4xlarge",
+# MAGIC     "driver_node_type_id": "m4.4xlarge",
+# MAGIC     "ssh_public_keys": [],
+# MAGIC     "custom_tags": {},
+# MAGIC     "spark_env_vars": {
+# MAGIC         "DATABRICKS_SERVER_HOSTNAME": "e2-demo-field-eng.cloud.databricks.com",
+# MAGIC         "DATABRICKS_HTTP_PATH": "/sql/1.0/warehouses/856a528773be741d",
+# MAGIC         "DATABRICKS_TOKEN": "{{secrets/notebooks/ray-gtm-examples-sql-warehouse-token}}"
+# MAGIC     },
+# MAGIC     "autotermination_minutes": 45,
+# MAGIC     "enable_elastic_disk": false,
+# MAGIC     "init_scripts": [],
+# MAGIC     "single_user_name": "jon.cheung@databricks.com",
+# MAGIC     "enable_local_disk_encryption": false,
+# MAGIC     "data_security_mode": "SINGLE_USER",
+# MAGIC     "runtime_engine": "STANDARD",
+# MAGIC     "effective_spark_version": "15.4.x-cpu-ml-scala2.12",
+# MAGIC     "assigned_principal": "user:jon.cheung@databricks.com",
+# MAGIC     "cluster_id": "1023-181805-kbecrjfb"
+# MAGIC }
+# MAGIC ```
+
+# COMMAND ----------
+
 !pip install --quiet scikit-learn bayesian-optimization==1.5.1 ray[default] ray[tune] optuna mlflow
 dbutils.library.restartPython()
 
@@ -29,7 +75,7 @@ import numpy as np
 from sklearn.metrics import mean_squared_error
 
 # Create a pseudo-dataset to test
-data, labels = make_classification(n_samples=1000000, 
+data, labels = make_classification(n_samples=1_000_000, 
                                    n_features=100, 
                                    n_informative=10, 
                                    n_classes=3)
@@ -57,7 +103,7 @@ final_eval_metric
 # COMMAND ----------
 
 # MAGIC %md 
-# MAGIC ## 2. Parallelize hyperparameter tuning for LightGBM
+# MAGIC ## 2. Parallelize hyperparameter tuning for XGboost
 # MAGIC To parallelize hyperparameter tuning we will perform two steps:
 # MAGIC - 2a. instantiate a Ray cluster - a Ray cluster is composed of multi-nodes for computing. Since this is Ray on Spark, we can assign `min/max worker_nodes` equal to (or less than) the number of worker nodes in the Spark cluster and `num_cpus_per_node` to the number of CPUs allocated per worker in the Spark cluster. 
 # MAGIC - 2b. Use Ray Tune to define and search the hyperparameter space. 
