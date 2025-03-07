@@ -56,7 +56,7 @@
 
 # COMMAND ----------
 
-!pip install --quiet scikit-learn bayesian-optimization==1.5.1 ray[default] ray[tune] optuna mlflow
+!pip install --quiet scikit-learn bayesian-optimization==1.5.1 ray[default]==2.42.0 ray[tune]==2.42.0 optuna mlflow==2.20.1
 dbutils.library.restartPython()
 
 
@@ -68,37 +68,37 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
-from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split
-from xgboost import XGBClassifier
-import numpy as np
-from sklearn.metrics import mean_squared_error
+# from sklearn.datasets import make_classification
+# from sklearn.model_selection import train_test_split
+# from xgboost import XGBClassifier
+# import numpy as np
+# from sklearn.metrics import mean_squared_error
 
-# Create a pseudo-dataset to test
-data, labels = make_classification(n_samples=1_000_000, 
-                                   n_features=100, 
-                                   n_informative=10, 
-                                   n_classes=3)
-# Perform train test split
-train_x, test_x, train_y, test_y = train_test_split(data, labels, test_size=0.25)
+# # Create a pseudo-dataset to test
+# data, labels = make_classification(n_samples=1_000_000, 
+#                                    n_features=100, 
+#                                    n_informative=10, 
+#                                    n_classes=3)
+# # Perform train test split
+# train_x, test_x, train_y, test_y = train_test_split(data, labels, test_size=0.25)
 
-# XGB sample hyperparameter configs
-config = {'objective':'multi:softmax',
-          'eval_metric': 'mlogloss', 
-          'learning_rate':0.05,
-          'n_estimators':1000,
-          'early_stopping_round': 20, 
-          'n_jobs': 16, 
-          'random_state':42}
+# # XGB sample hyperparameter configs
+# config = {'objective':'multi:softmax',
+#           'eval_metric': 'mlogloss', 
+#           'learning_rate':0.05,
+#           'n_estimators':1000,
+#           'early_stopping_round': 20, 
+#           'n_jobs': 16, 
+#           'random_state':42}
 
-# Train the classifier
-bst = XGBClassifier(**config)
-bst.fit(train_x, train_y, eval_set=[(test_x, test_y)])
+# # Train the classifier
+# bst = XGBClassifier(**config)
+# bst.fit(train_x, train_y, eval_set=[(test_x, test_y)])
 
-# Retrieve the evaluation metric values from the training process
-results = bst.evals_result()
-final_eval_metric = results['validation_0'][config['eval_metric']][-1]
-final_eval_metric
+# # Retrieve the evaluation metric values from the training process
+# results = bst.evals_result()
+# final_eval_metric = results['validation_0'][config['eval_metric']][-1]
+# final_eval_metric
 
 # COMMAND ----------
 
@@ -154,7 +154,8 @@ import numpy as np
 import mlflow
 from mlflow.utils.databricks_utils import get_databricks_env_vars
 from sklearn.model_selection import train_test_split
-from sklearn.datasets import make_regression
+from sklearn.datasets import make_classification
+from xgboost import XGBClassifier
 from ray import train, tune
 from ray.air.integrations.mlflow import MLflowLoggerCallback
 from ray.tune.search.optuna import OptunaSearch
@@ -163,7 +164,7 @@ from ray.tune.search.optuna import OptunaSearch
 num_samples = 48
 
 # Set mlflow experiment name
-experiment_name = '/Users/jon.cheung@databricks.com/ray-xgb-nike'
+experiment_name = '/Users/jon.cheung@databricks.com/ray-xgb-nike-fresh'
 mlflow.set_experiment(experiment_name)
 mlflow_db_creds = get_databricks_env_vars("databricks")
 
@@ -183,7 +184,7 @@ def train_classifier(config: dict,
     mlflow_credentials: dict, the credentials for logging to mlflow. This is inherited from the driver node. 
     """
     # Set mlflow credentials and active MLflow experiment within each Ray task
-    os.environ.update(mlflow_db_creds)
+    os.environ.update(mlflow_credentials)
     mlflow.set_experiment(experiment_name)
 
     # Write code to import your dataset here
@@ -193,7 +194,8 @@ def train_classifier(config: dict,
                                      n_classes=3)
     # Split into train and test set
     train_x, test_x, train_y, test_y = train_test_split(data, labels, test_size=0.25)
-    with mlflow.start_run(run_name='xgb_model_hpo_250226',
+    with mlflow.start_run(run_name='xgb_model_hpo_250307', 
+                          nested=True,
                           parent_run_id=parent_run_id):
 
         # Train the classifier
