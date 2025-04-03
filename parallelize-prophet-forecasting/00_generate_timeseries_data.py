@@ -13,9 +13,9 @@ import pandas as pd
 
 # COMMAND ----------
 
-groups = 100
+groups = 10000
 n_features_per_group = 2 # number of additional regressors
-n_samples_per_group = 5000
+n_samples_per_group = 50000
 
 # COMMAND ----------
 
