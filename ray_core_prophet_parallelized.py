@@ -63,6 +63,10 @@ print(f'The total number of combinations are {len(combinations)}')
 
 # COMMAND ----------
 
+combinations
+
+# COMMAND ----------
+
 import pandas as pd
 from prophet import Prophet
 import time
@@ -111,8 +115,21 @@ print(elapsed)
 import ray
 from ray.util.spark import setup_ray_cluster, shutdown_ray_cluster
 
-# The recommended configuration for a Ray cluster is as follows:
-# - set the num_cpus_per_node to the CPU count per worker node (with this configuration, each Apache Spark worker node launches one Ray worker node that will fully utilize the resources of each Apache Spark worker node.)
+restart = True
+if restart is True:
+  try:
+    shutdown_ray_cluster()
+  except:
+    pass
+  try:
+    ray.shutdown()
+  except:
+    pass
+
+
+# The recommended configuration for a Ray cluster, assuming you're not running any Spark tasks (If you do you'll need to reserve a couple workers to not be Ray actors.), is as follows: 
+
+# - set the num_cpus_per_node to the CPU cores per worker node (with this configuration, each Apache Spark worker node launches one Ray worker node that will fully utilize the resources of each Apache Spark worker node.)
 # - set min_worker_nodes to the number of Ray worker nodes you want to launch on each node.
 # - set max_worker_nodes to the total amount of worker nodes (this and `min_worker_nodes` together enable autoscaling)
 setup_ray_cluster(
@@ -120,8 +137,7 @@ setup_ray_cluster(
   max_worker_nodes=8,
   num_cpus_per_node=16,
   num_gpus_worker_node=0,
-  collect_log_to_path="/dbfs/Users/jon.cheung@databricks.com/ray_collected_logs",
-  RAY_memory_monitor_refresh_ms=0,
+  collect_log_to_path="/dbfs/Users/jon.cheung@databricks.com/ray_collected_logs"
 )
 
 # COMMAND ----------
@@ -189,23 +205,23 @@ def train_and_inference_prophet(train_data:pd.DataFrame,
                                 ):
         selected_data = train_data.loc[(train_data['store'] == store_id) & (train_data['item'] == item_id)]
         # Set mlflow credentials and active MLflow experiment within each Ray task
-        os.environ.update(mlflow_db_creds)
-        mlflow.set_experiment(experiment_name)
+        # os.environ.update(mlflow_db_creds)
+        # mlflow.set_experiment(experiment_name)
 
-        with mlflow.start_run(run_name = f"store_{store_id}_item_{item_id}",
-                              parent_run_id=parent_run_id):
-                historical_sales = create_time_series_plot(selected_data)
-                mlflow.log_figure(historical_sales, "plots/historical_sales.png")
+        # with mlflow.start_run(run_name = f"store_{store_id}_item_{item_id}",
+        #                       parent_run_id=parent_run_id):
+        #         historical_sales = create_time_series_plot(selected_data)
+        #         mlflow.log_figure(historical_sales, "plots/historical_sales.png")
 
-                dataset = mlflow.data.from_pandas(selected_data)
-                mlflow.log_input(dataset)
+        #         dataset = mlflow.data.from_pandas(selected_data)
+        #         mlflow.log_input(dataset)
                 
-                m = Prophet(daily_seasonality=True)
-                m.fit(train_data)
-                future = m.make_future_dataframe(periods=horizon)
-                forecast = m.predict(future)
-                mlflow.prophet.log_model(pr_model=m,
-                                         artifact_path="prophet_model")
+        m = Prophet(daily_seasonality=True)
+        m.fit(train_data)
+        future = m.make_future_dataframe(periods=horizon)
+        forecast = m.predict(future)
+        # mlflow.prophet.log_model(pr_model=m,
+        #                                 artifact_path="prophet_model")
         return forecast
 
 # Here, the call to the train_and_inference_prophet function creates an object reference. By default, Ray will use a single-CPU per task. Since, Prophet is a bit more compute intensive, we'll increase the number of CPUs to 2.

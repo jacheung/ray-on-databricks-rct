@@ -36,11 +36,6 @@
 # MAGIC     "driver_node_type_id": "m4.4xlarge",
 # MAGIC     "ssh_public_keys": [],
 # MAGIC     "custom_tags": {},
-# MAGIC     "spark_env_vars": {
-# MAGIC         "DATABRICKS_SERVER_HOSTNAME": "e2-demo-field-eng.cloud.databricks.com",
-# MAGIC         "DATABRICKS_HTTP_PATH": "/sql/1.0/warehouses/856a528773be741d",
-# MAGIC         "DATABRICKS_TOKEN": "{{secrets/notebooks/ray-gtm-examples-sql-warehouse-token}}"
-# MAGIC     },
 # MAGIC     "autotermination_minutes": 45,
 # MAGIC     "enable_elastic_disk": false,
 # MAGIC     "init_scripts": [],
