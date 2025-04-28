@@ -63,37 +63,37 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
-# from sklearn.datasets import make_classification
-# from sklearn.model_selection import train_test_split
-# from xgboost import XGBClassifier
-# import numpy as np
-# from sklearn.metrics import mean_squared_error
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
+import numpy as np
+from sklearn.metrics import mean_squared_error
 
-# # Create a pseudo-dataset to test
-# data, labels = make_classification(n_samples=1_000_000, 
-#                                    n_features=100, 
-#                                    n_informative=10, 
-#                                    n_classes=3)
-# # Perform train test split
-# train_x, test_x, train_y, test_y = train_test_split(data, labels, test_size=0.25)
+# Create a pseudo-dataset to test
+data, labels = make_classification(n_samples=1_000_000, 
+                                   n_features=100, 
+                                   n_informative=10, 
+                                   n_classes=3)
+# Perform train test split
+train_x, test_x, train_y, test_y = train_test_split(data, labels, test_size=0.25)
 
-# # XGB sample hyperparameter configs
-# config = {'objective':'multi:softmax',
-#           'eval_metric': 'mlogloss', 
-#           'learning_rate':0.05,
-#           'n_estimators':1000,
-#           'early_stopping_round': 20, 
-#           'n_jobs': 16, 
-#           'random_state':42}
+# XGB sample hyperparameter configs
+config = {'objective':'multi:softmax',
+          'eval_metric': 'mlogloss', 
+          'learning_rate':0.05,
+          'n_estimators':1000,
+          'early_stopping_round': 20, 
+          'n_jobs': 16, 
+          'random_state':42}
 
-# # Train the classifier
-# bst = XGBClassifier(**config)
-# bst.fit(train_x, train_y, eval_set=[(test_x, test_y)])
+# Train the classifier
+bst = XGBClassifier(**config)
+bst.fit(train_x, train_y, eval_set=[(test_x, test_y)])
 
-# # Retrieve the evaluation metric values from the training process
-# results = bst.evals_result()
-# final_eval_metric = results['validation_0'][config['eval_metric']][-1]
-# final_eval_metric
+# Retrieve the evaluation metric values from the training process
+results = bst.evals_result()
+final_eval_metric = results['validation_0'][config['eval_metric']][-1]
+final_eval_metric
 
 # COMMAND ----------
 

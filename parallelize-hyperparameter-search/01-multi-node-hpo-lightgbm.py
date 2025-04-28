@@ -29,7 +29,7 @@ import numpy as np
 from sklearn.metrics import mean_squared_error
 
 # Create a pseudo-dataset to test
-data, labels = make_regression(n_samples=10000000, 
+data, labels = make_regression(n_samples=10_000_000, 
                                    n_features=100, 
                                    n_informative=10, 
                                    n_targets=1)

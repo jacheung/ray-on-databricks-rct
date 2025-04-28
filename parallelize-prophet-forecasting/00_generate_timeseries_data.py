@@ -13,7 +13,7 @@ import pandas as pd
 
 # COMMAND ----------
 
-groups = 10000
+groups = 1000
 n_features_per_group = 2 # number of additional regressors
 n_samples_per_group = 50000
 
