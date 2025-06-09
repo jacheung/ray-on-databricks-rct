@@ -1,6 +1,6 @@
 ## Scaling ML pipelines in Retail, Consumer Goods, and Travel 
 
-Ray is a powerful tool used to scale various parts of the machine learning pipeline to meet production use-cases. This is a repository for use-cases seen across the retail, consumer goods, and travel vertical. For a list of general Ray-on-Databricks examples, see this [repository](https://github.com/aelhelouDB/ray-on-databricks-examples/tree/main). 
+Ray is a powerful tool used to scale various parts of the machine learning pipeline to meet production use-cases. This is a repository for use-cases seen across the retail, consumer goods, and travel vertical. For a list of general Ray-on-Databricks examples, see this [repository]([https://github.com/aelhelouDB/ray-on-databricks-examples/tree/main](https://github.com/databricks-industry-solutions/ray-framework-on-databricks)). 
 
 
 ## Examples:
