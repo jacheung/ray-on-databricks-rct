@@ -57,6 +57,22 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
+num_training_rows = 5_000_000
+num_training_columns = 100
+num_labels = 5
+
+catalog = "main"
+schema = "ray_gtm_examples"
+table = f"main.ray_gtm_examples.synthetic_data_{num_training_rows}_rows_{num_training_columns}_columns_{num_labels}_labels"
+label="target"
+
+# COMMAND ----------
+
+data = spark.read.table(table).toPandas()
+labels = data.pop(label)
+
+# COMMAND ----------
+
 # MAGIC %md 
 # MAGIC ## Baseline: one XGB model
 # MAGIC This short code-snippet below builds one XGBoost model using a specific set of hyperparameters. It'll provide a starting point for us before we parallelize. Ensure you understand what's going on here before we move onto the next steps. 
@@ -69,11 +85,6 @@ from xgboost import XGBClassifier
 import numpy as np
 from sklearn.metrics import mean_squared_error
 
-# Create a pseudo-dataset to test
-data, labels = make_classification(n_samples=1_000_000, 
-                                   n_features=100, 
-                                   n_informative=10, 
-                                   n_classes=3)
 # Perform train test split
 train_x, test_x, train_y, test_y = train_test_split(data, labels, test_size=0.25)
 
@@ -228,7 +239,7 @@ param_space = {
 optuna = OptunaSearch(metric="mlogloss", 
                       mode="min")
 
-with mlflow.start_run(run_name ='parallelized_16_cores') as parent_run:
+with mlflow.start_run(run_name ='5M_dataset_parallelized_16_cores') as parent_run:
     tuner = tune.Tuner(
         ray.tune.with_parameters(
             trainable_with_resources,
