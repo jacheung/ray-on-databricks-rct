@@ -9,20 +9,29 @@ schema_name = 'ray_gtm_examples'
 
 # COMMAND ----------
 
-dbutils.widgets.text("num_training_rows", "100", "num_training_rows")
+# Define job inputs
+dbutils.widgets.text("catalog_name", "main", "Unity Catalog Name")
+dbutils.widgets.text("schema_name", "default", "Unity Catalog Schema Name")
+dbutils.widgets.text("num_training_rows", "100", "rows of data to generate")
+dbutils.widgets.text("num_training_columns", "1000", "number of feature columns")
+dbutils.widgets.text("num_labels", "2", "number of labels in the target column")
+
+
+# Get parameter values (will override widget defaults if run by job)
+catalog_name = dbutils.widgets.get("catalog_name")
+schema_name = dbutils.widgets.get("schema_name")
 num_training_rows = int(dbutils.widgets.get("num_training_rows"))
-print(f"Generating {num_training_rows} synthetic rows")
-
-dbutils.widgets.text("num_training_columns", "1000", "num_training_columns")
 num_training_columns = int(dbutils.widgets.get("num_training_columns"))
-print(f"Generating {num_training_columns} synthetic columns")
-
-dbutils.widgets.text("num_labels", "2", "num_labels")
 num_labels = int(dbutils.widgets.get("num_labels"))
+
+print(f"Generating {num_training_rows} synthetic rows")
+print(f"Generating {num_training_columns} synthetic columns")
 print(f"Generating {num_labels} synthetic labels")
 
+# COMMAND ----------
+
 concurrency = sc.defaultParallelism
-print(f"Setting Spark.XGBoost num_workers to {concurrency} = num cores on workers in cluster")
+print(f"Setting Spark num_workers to {concurrency} = num cores on workers in cluster")
 
 # COMMAND ----------
 
@@ -66,7 +75,7 @@ try:
     print(f"Schema '{created_schema.name}' created successfully")
 except:
     # Handle the case where the schema already exists
-    print(f"Schema '{schema_name}' already exists in catalog '{catalog_name}'. Skipping catalog creation.")
+    print(f"Schema '{schema_name}' already exists in catalog '{catalog_name}'. Skipping schema creation.")
 
 # Create a volume for the parquet files if that doesn't exist
 parquet_write_path = f'/Volumes/{catalog_name}/{schema_name}/synthetic_data'
@@ -81,6 +90,6 @@ else:
     print(f"Volume {parquet_write_path} already exists. Skipping volumes creation.")
 
 # write table
-df.write.format("delta").mode("overwrite").saveAsTable(f"{catalog_name}.{schema_name}.synthetic_data_{num_training_rows}_rows_{num_training_columns}_columns_{num_labels}_labels")
+df.write.format("delta").mode("overwrite").option("delta.enableDeletionVectors", "true").saveAsTable(f"{catalog_name}.{schema_name}.synthetic_data_{num_training_rows}_rows_{num_training_columns}_columns_{num_labels}_labels")
 # write parquet
 df.write.mode("overwrite").format("parquet").save(f"{parquet_write_path}/synthetic_data_{num_training_rows}_rows_{num_training_columns}_columns_{num_labels}_labels")
