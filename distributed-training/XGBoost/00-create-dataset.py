@@ -51,7 +51,6 @@ testDataSpec = (
 )
 
 df = testDataSpec.build()
-df = df.repartition(50)
 
 # COMMAND ----------
 
