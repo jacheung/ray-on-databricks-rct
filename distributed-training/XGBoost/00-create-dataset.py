@@ -30,16 +30,11 @@ print(f"Generating {num_labels} synthetic labels")
 
 # COMMAND ----------
 
-concurrency = sc.defaultParallelism
-print(f"Setting Spark num_workers to {concurrency} = num cores on workers in cluster")
-
-# COMMAND ----------
-
 import dbldatagen as dg
 from pyspark.sql.types import FloatType, IntegerType, StringType
 
 testDataSpec = (
-    dg.DataGenerator(spark, name="synthetic_data", rows=num_training_rows, partitions=concurrency)
+    dg.DataGenerator(spark, name="synthetic_data", rows=num_training_rows)
     .withIdOutput()
     .withColumn(
         "r",
