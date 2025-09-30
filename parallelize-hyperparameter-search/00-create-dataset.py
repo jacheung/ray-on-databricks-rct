@@ -15,7 +15,7 @@ dbutils.widgets.text("schema_name", "default", "Unity Catalog Schema Name")
 dbutils.widgets.text("num_training_rows", "100", "rows of data to generate")
 dbutils.widgets.text("num_training_columns", "1000", "number of feature columns")
 dbutils.widgets.text("num_labels", "2", "number of labels in the target column")
-
+dbutils.widgets.text("groups", "1", "number of groups")
 
 # Get parameter values (will override widget defaults if run by job)
 catalog_name = dbutils.widgets.get("catalog_name")
@@ -23,6 +23,7 @@ schema_name = dbutils.widgets.get("schema_name")
 num_training_rows = int(dbutils.widgets.get("num_training_rows"))
 num_training_columns = int(dbutils.widgets.get("num_training_columns"))
 num_labels = int(dbutils.widgets.get("num_labels"))
+groups = int(dbutils.widgets.get("groups"))
 
 print(f"Generating {num_training_rows} synthetic rows")
 print(f"Generating {num_training_columns} synthetic columns")
@@ -30,17 +31,13 @@ print(f"Generating {num_labels} synthetic labels")
 
 # COMMAND ----------
 
-concurrency = sc.defaultParallelism
-print(f"Setting Spark num_workers to {concurrency} = num cores on workers in cluster")
-
-# COMMAND ----------
-
 import dbldatagen as dg
 from pyspark.sql.types import FloatType, IntegerType, StringType
 
 testDataSpec = (
-    dg.DataGenerator(spark, name="synthetic_data", rows=num_training_rows, partitions=concurrency)
+    dg.DataGenerator(spark, name="synthetic_data", rows=num_training_rows)
     .withIdOutput()
+    .withColumn("group_id", values=[f"group_{x}" for x in range(groups)])
     .withColumn(
         "r",
         FloatType(),
@@ -56,7 +53,6 @@ testDataSpec = (
 )
 
 df = testDataSpec.build()
-df = df.repartition(50)
 
 # COMMAND ----------
 
@@ -90,6 +86,6 @@ else:
     print(f"Volume {parquet_write_path} already exists. Skipping volumes creation.")
 
 # write table
-df.write.format("delta").mode("overwrite").option("delta.enableDeletionVectors", "true").saveAsTable(f"{catalog_name}.{schema_name}.synthetic_data_{num_training_rows}_rows_{num_training_columns}_columns_{num_labels}_labels")
+df.write.format("delta").mode("overwrite").option("delta.enableDeletionVectors", "true").saveAsTable(f"{catalog_name}.{schema_name}.synthetic_data_{num_training_rows}_rows_{num_training_columns}_columns_{num_labels}_labels_{groups}_groups")
 # write parquet
-df.write.mode("overwrite").format("parquet").save(f"{parquet_write_path}/synthetic_data_{num_training_rows}_rows_{num_training_columns}_columns_{num_labels}_labels")
+df.write.mode("overwrite").format("parquet").save(f"{parquet_write_path}/synthetic_data_{num_training_rows}_rows_{num_training_columns}_columns_{num_labels}_labels_{groups}_groups")

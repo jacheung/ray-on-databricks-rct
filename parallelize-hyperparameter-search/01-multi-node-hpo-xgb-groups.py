@@ -58,16 +58,16 @@ dbutils.library.restartPython()
 num_training_rows = 20_000_000
 num_training_columns = 100
 num_labels = 5
-groups=1
+groups=4
 
 catalog = "main"
 schema = "ray_gtm_examples"
-table = f"synthetic_data_{num_training_rows}_rows_{num_training_columns}_columns_{num_labels}_labels"
+table = f"synthetic_data_{num_training_rows}_rows_{num_training_columns}_columns_{num_labels}_labels_{groups}_groups"
 label="target"
 # Set mlflow experiment name
 mlflow_experiment_name = '/Users/jon.cheung@databricks.com/ray-xgb-hertz'
 
-# Set the number of HPO trials to run
+# Set the number of HPO trials to run per group
 num_samples = 16
 
 # If running in a multi-node cluster, this is where you
@@ -86,12 +86,6 @@ ray_logs_path = "/dbfs/Users/jon.cheung@databricks.com/ray_collected_logs/"
 # MAGIC - set the `num_cpus_per_node` to the CPU count per worker node (with this configuration, each Apache Spark worker node launches one Ray worker node that will fully utilize the resources of each Apache Spark worker node.)
 # MAGIC - set `min_worker_nodes` to the number of Ray worker nodes you want to launch on each node.
 # MAGIC - set `max_worker_nodes` to the total amount of worker nodes (this and `min_worker_nodes` together enable autoscaling)
-
-# COMMAND ----------
-
-# MAGIC %md 
-# MAGIC ## Baseline: one XGB model
-# MAGIC This short code-snippet below builds one XGBoost model using a specific set of hyperparameters. It'll provide a starting point for us before we parallelize. Ensure you understand what's going on here before we move onto the next steps. 
 
 # COMMAND ----------
 
@@ -148,7 +142,8 @@ except:
   ds = ray.data.read_parquet(parquet_path)
   print('read directly from parquet')
 
-train_dataset, val_dataset = ds.train_test_split(test_size=0.25)
+
+# train_dataset, val_dataset = ds.train_test_split(test_size=0.25)
 
 # COMMAND ----------
 
@@ -159,6 +154,7 @@ train_dataset, val_dataset = ds.train_test_split(test_size=0.25)
 
 from ray import train, tune
 num_cpu_per_trial=48
+
 
 # Define the hyperparameter search space.
 # XGB sample hyperparameter configs
@@ -182,22 +178,17 @@ import xgboost
 from ray.air.integrations.mlflow import MLflowLoggerCallback
 from ray.tune.search.optuna import OptunaSearch
 from ray.train.xgboost import XGBoostTrainer, RayTrainReportCallback
-
+import pandas as pd
+from sklearn.model_selection import train_test_split
 
 resources = ray.cluster_resources()
 total_cluster_cpus = resources.get("CPU") 
 max_concurrent_trials = max(1, int(total_cluster_cpus // num_cpu_per_trial))
 
-
-# Set mlflow experiment name
-experiment_name = '/Users/jon.cheung@databricks.com/ray-xgb-nike-fresh'
-mlflow.set_experiment(experiment_name)
-
 # Define a training function to parallelize
-def trainable_xgb(config: dict,
-                    train_data: ray.data.Dataset,
-                    val_data: ray.data.Dataset,
-                            ):
+def trainable_xgb(config: dict, 
+                  train_data: ray.data.Dataset,
+                   val_data: ray.data.Dataset):
     """
     This objective function trains an XGBoost model given a set of sampled hyperparameters. There is no returned value but a metric that is sent back to the driver node to update the progress of the HPO run.
 
@@ -235,32 +226,63 @@ def trainable_xgb(config: dict,
     tune.report({config['eval_metric']: eval_metric, "done": True})
 
 
-# By default, Ray Tune uses 1 CPU/trial. XGB leverages hyper-threading so we will utilize all CPUs in a node per instance. Since I've set up my nodes to have 64 CPUs each, I'll set the "cpu" parameter to 64. Feel free to tune this down if you're seeing that you're not utilizing all the CPUs in the cluster. 
+# By default, Ray Tune uses 1 CPU/trial. XGB leverages hyper-threading so we will utilize all CPUs in a node per instance. Since I've set up my nodes to have 48 CPUs each, I'll set the "cpu" parameter to 48. Feel free to tune this down if you're seeing that you're not utilizing all the CPUs in the cluster. 
 trainable_with_resources = tune.with_resources(trainable_xgb, 
                                                {"cpu": num_cpu_per_trial})
 
-# Set up search algorithm. Here we use Optuna and use the default the Bayesian sampler (i.e. TPES)
-optuna = OptunaSearch(metric=param_space['eval_metric'], 
-                      mode="min")
+def global_tuner(dataset: ray.data.Dataset,
+                 group_column: str, 
+                 trainable_with_resources,                  
+                 param_space: dict):
+    # Group looping. No point in parallelizing since we're dumping all resources into each group.
+    # Note we do not do any materializing of the Ray dataset at the driver/orchestrator. 
+    # Materializing only happens at the lowest level trainable (i.e. at the actors/ workers).
+    unique_groups = dataset.unique(group_column)
+    
+    final_hyperparameters = {}
+    for group in unique_groups: 
+        filtered_ds = dataset.filter(expr=f"{group_column} == '{group}'").drop_columns([group_column])
+        train_dataset, val_dataset = filtered_ds.train_test_split(test_size=0.25)
+        
+        # Set up search algorithm. Here we use Optuna and use the default the Bayesian sampler (i.e. TPES)
+        optuna = OptunaSearch(metric=param_space['eval_metric'], 
+                              mode="min",
+                              study_name=group)
+        # Kick off HPO run across the cluster with Ray Tune
+        tuner = tune.Tuner(
+            ray.tune.with_parameters(
+                trainable_with_resources,
+                parent_run_id = 
+                train_data=train_dataset,
+                val_data=val_dataset),
+            run_config=tune.RunConfig(name='mlflow',
+                                callbacks=[MLflowLoggerCallback(
+                                    experiment_name=mlflow_experiment_name,
+                                    save_artifact=True,
+                                    log_params_on_trial_end=True)]
+                                ),
+            tune_config=tune.TuneConfig(num_samples=num_samples,
+                                        max_concurrent_trials=max_concurrent_trials,
+                                        search_alg=optuna),
+            param_space=param_space
+            )
+        results = tuner.fit()
+        
+        best = results.get_best_result(metric=param_space['eval_metric'], 
+                            mode="min").config
 
-# Kick off HPO run across the cluster with Ray Tune
-tuner = tune.Tuner(
-    ray.tune.with_parameters(
-        trainable_with_resources,
-        train_data=train_dataset,
-        val_data=val_dataset),
-    run_config=tune.RunConfig(name='mlflow',
-                        callbacks=[MLflowLoggerCallback(
-                            experiment_name=mlflow_experiment_name,
-                            save_artifact=True,
-                            log_params_on_trial_end=True)]
-                        ),
-    tune_config=tune.TuneConfig(num_samples=num_samples,
-                                max_concurrent_trials=max_concurrent_trials,
-                                search_alg=optuna),
-    param_space=param_space
-    )
-results = tuner.fit()
+        final_hyperparameters[group] = best
+    
+    return final_hyperparameters
 
-results.get_best_result(metric=param_space['eval_metric'], 
-                        mode="min").config
+
+# COMMAND ----------
+
+results = global_tuner(dataset=ds, 
+                       trainable_with_resources=trainable_with_resources,
+                       group_column='group_id',
+                       param_space=param_space)
+
+# COMMAND ----------
+
+results

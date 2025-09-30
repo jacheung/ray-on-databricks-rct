@@ -246,10 +246,10 @@ def train_global_lgbm(config: dict,
                     callbacks = [lgb.record_evaluation(results)]
                     )
     # get RMSE of validation set for last iteration
-    eval_metric = results['validation']['multi_logloss'][-1]
+    eval_metric = results['validation'][param_space['metric']x][-1]
 
     # Return evaluation results back to driver node
-    tune.report({"multi_logloss": eval_metric, "done": True})
+    tune.report({param_space['metric']: eval_metric, "done": True})
 
 # By default, Ray Tune uses 1 CPU/trial. LightGBM leverages hyper-threading so we will utilize all CPUs in a node per instance. Since I've set up my nodes to have 48 CPUs each, I'll set the "cpu" parameter to 48. Feel free to tune this down if you're seeing that you're not utilizing all the CPUs in the cluster. 
 trainable_with_resources = tune.with_resources(train_global_lgbm, 
