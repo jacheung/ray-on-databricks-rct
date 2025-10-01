@@ -175,15 +175,17 @@ import os
 import numpy as np
 import mlflow
 import xgboost
-from ray.air.integrations.mlflow import MLflowLoggerCallback
+from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow
 from ray.tune.search.optuna import OptunaSearch
 from ray.train.xgboost import XGBoostTrainer, RayTrainReportCallback
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from datetime import datetime
+
 
 resources = ray.cluster_resources()
 total_cluster_cpus = resources.get("CPU") 
 max_concurrent_trials = max(1, int(total_cluster_cpus // num_cpu_per_trial))
+
 
 # Define a training function to parallelize
 def trainable_xgb(config: dict, 
@@ -198,6 +200,8 @@ def trainable_xgb(config: dict,
     parent_run_id: str, the ID of the parent run. This is inherited from the driver node that initiates the mlflow parent run.
     mlflow_credentials: dict, the credentials for logging to mlflow. This is inherited from the driver node. 
     """
+    # mlflow = setup_mlflow(mlflow_experiment_name)
+
     # Convert Ray data to pandas DataFrame
     # - materialize dumps the dataset from disk/cloud to cluster object store.
     # - to_pandas pulls from object store to local node
@@ -224,9 +228,11 @@ def trainable_xgb(config: dict,
     eval_metric = evals_results['validation'][config['eval_metric']][-1]
 
     tune.report({config['eval_metric']: eval_metric, "done": True})
+    
+    return bst, evals_results
 
 
-# By default, Ray Tune uses 1 CPU/trial. XGB leverages hyper-threading so we will utilize all CPUs in a node per instance. Since I've set up my nodes to have 48 CPUs each, I'll set the "cpu" parameter to 48. Feel free to tune this down if you're seeing that you're not utilizing all the CPUs in the cluster. 
+# By default, Ray Tune uses 1 CPU/trial. XGB leverages hyper-threading so we will utilize all CPUs in a node per instance. 
 trainable_with_resources = tune.with_resources(trainable_xgb, 
                                                {"cpu": num_cpu_per_trial})
 
@@ -239,44 +245,61 @@ def global_tuner(dataset: ray.data.Dataset,
     # Materializing only happens at the lowest level trainable (i.e. at the actors/ workers).
     unique_groups = dataset.unique(group_column)
     
-    final_hyperparameters = {}
+    group_artifact_paths = {}
     for group in unique_groups: 
         filtered_ds = dataset.filter(expr=f"{group_column} == '{group}'").drop_columns([group_column])
         train_dataset, val_dataset = filtered_ds.train_test_split(test_size=0.25)
         
-        # Set up search algorithm. Here we use Optuna and use the default the Bayesian sampler (i.e. TPES)
-        optuna = OptunaSearch(metric=param_space['eval_metric'], 
-                              mode="min",
-                              study_name=group)
-        # Kick off HPO run across the cluster with Ray Tune
-        tuner = tune.Tuner(
-            ray.tune.with_parameters(
-                trainable_with_resources,
-                parent_run_id = 
-                train_data=train_dataset,
-                val_data=val_dataset),
-            run_config=tune.RunConfig(name='mlflow',
-                                callbacks=[MLflowLoggerCallback(
-                                    experiment_name=mlflow_experiment_name,
-                                    save_artifact=True,
-                                    log_params_on_trial_end=True)]
-                                ),
-            tune_config=tune.TuneConfig(num_samples=num_samples,
-                                        max_concurrent_trials=max_concurrent_trials,
-                                        search_alg=optuna),
-            param_space=param_space
-            )
-        results = tuner.fit()
-        
-        best = results.get_best_result(metric=param_space['eval_metric'], 
-                            mode="min").config
+        today = datetime.now()
+        formatted_date = today.strftime("%y%m%d")
+        with mlflow.start_run(run_name=f"{group}_{formatted_date}") as parent_run:
+            
+            # Set up search algorithm. Here we use Optuna and use the default the Bayesian sampler (i.e. TPES)
+            optuna = OptunaSearch(metric=param_space['eval_metric'], 
+                                mode="min",
+                                study_name=group)
+            # Kick off HPO run across the cluster with Ray Tune
+            tuner = tune.Tuner(
+                ray.tune.with_parameters(
+                    trainable_with_resources,
+                    train_data=train_dataset,
+                    val_data=val_dataset),
+                run_config=tune.RunConfig(name='mlflow',
+                                    callbacks=[MLflowLoggerCallback(
+                                        experiment_name=mlflow_experiment_name,
+                                        save_artifact=True,
+                                        log_params_on_trial_end=True,
+                                        tags={"mlflow.parentRunId": parent_run.info.run_id})]
+                                    ),
+                tune_config=tune.TuneConfig(num_samples=num_samples,
+                                            max_concurrent_trials=max_concurrent_trials,
+                                            search_alg=optuna),
+                param_space=param_space
+                )
+            results = tuner.fit()
+            
+            best_config = results.get_best_result(metric=param_space['eval_metric'], 
+                                mode="min").config
+            
+            best_model, evaluation_results = trainable_xgb(config=best_config,
+                                                            train_data=train_dataset,
+                                                             val_data=val_dataset)
+            
+            with mlflow.start_run(run_name=f"BEST_{group}_{formatted_date}", nested=True) as best_run:
+                mlflow.xgboost.log_model(best_model, 
+                                         artifact_path="model")
+                xgb_model_artifact_path = os.path.join(best_run.info.artifact_uri, "model", "model.xgb")
+                mlflow.log_metrics({best_config['eval_metric']: evaluation_results['validation'][best_config['eval_metric']][-1]})
+                mlflow.log_params(best_config)
 
-        final_hyperparameters[group] = best
+        group_artifact_paths[group] = xgb_model_artifact_path
     
-    return final_hyperparameters
+    return group_artifact_paths
 
 
 # COMMAND ----------
+
+mlflow.set_experiment(mlflow_experiment_name)
 
 results = global_tuner(dataset=ds, 
                        trainable_with_resources=trainable_with_resources,
